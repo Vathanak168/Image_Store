@@ -1,55 +1,86 @@
+import { useState } from 'react'
 import { motion } from 'framer-motion'
-import { useNavigate } from 'react-router-dom'
+import { useNavigate, useParams } from 'react-router-dom'
+import { useEventConfig } from '../hooks/useEventConfig'
+import FindMyPhotosDrawer from '../components/FindMyPhotosDrawer'
 
 export default function LandingPage() {
+  const { eventId } = useParams()
   const navigate = useNavigate()
+  
+  // Try to use the URL eventId, fallback to active event logic if needed
+  // Note: For now, we assume the new routing /e/:eventId is active
+  const { data: event, isLoading, error } = useEventConfig(eventId)
 
-  const options = [
+  const [activeDrawer, setActiveDrawer] = useState(null) // 'face_scan', 'qr_access', 'table_browsing'
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-cream flex items-center justify-center">
+        <div className="w-8 h-8 rounded-full border-2 border-gold border-t-transparent animate-spin" />
+      </div>
+    )
+  }
+
+  if (error || !event) {
+    return (
+      <div className="min-h-screen bg-cream flex flex-col items-center justify-center p-6 text-center">
+        <h2 className="text-2xl font-serif text-ink mb-2">Event Not Found</h2>
+        <p className="text-muted text-sm font-sans">The event link might be broken or expired.</p>
+      </div>
+    )
+  }
+
+  const features = event.features || {}
+
+  const allOptions = [
     {
+      id: 'face_scan',
       icon: '👤',
       label: 'Scan My Face',
-      sub: 'AI finds your photos',
-      action: () => navigate('/face-scan'),
+      sub: 'AI finds your photos instantly',
       primary: true,
     },
     {
+      id: 'qr_access',
       icon: '📷',
       label: 'Scan QR Code',
-      sub: 'From your invitation',
-      action: () => navigate('/scan-qr'),
+      sub: 'From your physical invitation',
     },
     {
+      id: 'table_browsing',
       icon: '🪑',
       label: 'Table Number',
-      sub: 'Browse by seating',
-      action: () => navigate('/table'),
+      sub: 'Browse by seating arrangement',
     },
   ]
 
+  // Filter based on admin toggles
+  const options = allOptions.filter(opt => features[opt.id] !== false)
+
+  const handleOptionClick = (id) => {
+    // Progressive disclosure: Open drawer instead of navigating away immediately
+    setActiveDrawer(id)
+  }
+
   return (
     <div className="min-h-screen bg-cream flex flex-col relative overflow-hidden">
-
-      {/* Top gold line */}
+      {/* Background styling remains same */}
       <div className="absolute top-0 left-0 w-full h-[2px] bg-gradient-to-r from-transparent via-gold to-transparent z-10" />
-
-      {/* Background decoration */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-32 -right-32 w-80 h-80 rounded-full bg-gold/5 blur-3xl" />
         <div className="absolute -bottom-20 -left-20 w-64 h-64 rounded-full bg-gold/5 blur-2xl" />
       </div>
 
-      {/* Main content */}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12">
-
-        {/* Event branding */}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 py-12 z-10">
+        
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.6 }}
           className="text-center mb-12 w-full max-w-xs"
         >
-          {/* Logo mark */}
-          <div className="w-12 h-12 rounded-full border border-gold/40 flex items-center justify-center mx-auto mb-6">
+          <div className="w-12 h-12 rounded-full border border-gold/40 flex items-center justify-center mx-auto mb-6 bg-cream shadow-sm">
             <span className="text-gold text-xl">✦</span>
           </div>
 
@@ -57,19 +88,12 @@ export default function LandingPage() {
             Welcome to
           </p>
           <h1 className="font-serif text-[38px] sm:text-[44px] font-light italic text-ink leading-[1.15] mb-3">
-            Sophia & Daniel's<br />Wedding
+            {event.name}
           </h1>
-          <div className="flex items-center justify-center gap-2 text-muted text-xs font-sans">
-            <span>June 14, 2025</span>
-            <span className="w-1 h-1 rounded-full bg-muted/40 inline-block" />
-            <span>Grand Sofitel, Phnom Penh</span>
-          </div>
         </motion.div>
 
-        {/* Gold divider */}
         <div className="w-20 h-[1px] bg-gradient-to-r from-transparent via-gold to-transparent mb-10" />
 
-        {/* Access options */}
         <div className="w-full max-w-xs space-y-3">
           {options.map((opt, i) => (
             <motion.button
@@ -78,7 +102,7 @@ export default function LandingPage() {
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.1 + i * 0.08, duration: 0.4 }}
               whileTap={{ scale: 0.97 }}
-              onClick={opt.action}
+              onClick={() => handleOptionClick(opt.id)}
               className={`w-full flex items-center gap-4 px-5 py-4 rounded-2xl transition-all
                 ${opt.primary
                   ? 'bg-ink text-cream shadow-xl shadow-ink/20 border border-ink'
@@ -100,28 +124,67 @@ export default function LandingPage() {
               <span className={`text-sm ${opt.primary ? 'text-gold' : 'text-muted'}`}>→</span>
             </motion.button>
           ))}
+          
+          {options.length === 0 && (
+             <p className="text-center text-muted text-sm font-sans italic p-4 border border-cream-200 rounded-xl bg-white/50">
+               No access methods enabled.
+             </p>
+          )}
         </div>
-
-        {/* Privacy note */}
-        <motion.p
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          transition={{ delay: 0.5 }}
-          className="text-muted/50 text-[10px] text-center mt-8 max-w-[200px] leading-relaxed font-sans"
-        >
-          Photos are private. Only you can access your gallery via your unique link.
-        </motion.p>
       </div>
 
-      {/* Footer */}
-      <div className="flex items-center justify-center pb-8">
-        <button
-          onClick={() => navigate('/admin')}
-          className="text-muted/40 text-[10px] hover:text-muted/70 transition-colors font-sans"
-        >
-          Photographer Admin ↗
-        </button>
-      </div>
+      {/* Drawers for Progressive Disclosure */}
+      <FindMyPhotosDrawer 
+        isOpen={activeDrawer === 'face_scan'} 
+        onClose={() => setActiveDrawer(null)}
+        title="Scan My Face"
+      >
+        <div className="text-center">
+          <p className="text-sm text-muted mb-6">Take a quick selfie to let our AI instantly find all photos of you from the event.</p>
+          <div className="w-full h-48 bg-ink/5 rounded-xl border border-ink/10 flex items-center justify-center mb-6">
+            <span className="text-4xl">📸</span>
+          </div>
+          <button 
+            onClick={() => navigate(`/e/${eventId}/face-scan`)}
+            className="w-full py-4 bg-ink text-cream rounded-xl font-medium text-sm hover:bg-ink/90 transition-colors"
+          >
+            Open Camera
+          </button>
+        </div>
+      </FindMyPhotosDrawer>
+
+      <FindMyPhotosDrawer 
+        isOpen={activeDrawer === 'table_browsing'} 
+        onClose={() => setActiveDrawer(null)}
+        title="Find Your Table"
+      >
+        <div className="text-center">
+          <p className="text-sm text-muted mb-6">Enter your table number or select it from the list to see photos of your seating group.</p>
+          <button 
+            onClick={() => navigate(`/e/${eventId}/tables`)}
+            className="w-full py-4 bg-ink text-cream rounded-xl font-medium text-sm hover:bg-ink/90 transition-colors"
+          >
+            Browse Tables
+          </button>
+        </div>
+      </FindMyPhotosDrawer>
+
+      <FindMyPhotosDrawer 
+        isOpen={activeDrawer === 'qr_access'} 
+        onClose={() => setActiveDrawer(null)}
+        title="Scan QR Code"
+      >
+        <div className="text-center">
+          <p className="text-sm text-muted mb-6">Point your camera at the QR code on your physical invitation card.</p>
+          <button 
+            onClick={() => navigate(`/e/${eventId}/scan-qr`)}
+            className="w-full py-4 bg-ink text-cream rounded-xl font-medium text-sm hover:bg-ink/90 transition-colors"
+          >
+            Open QR Scanner
+          </button>
+        </div>
+      </FindMyPhotosDrawer>
+
     </div>
   )
 }

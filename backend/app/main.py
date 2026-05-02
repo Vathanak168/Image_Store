@@ -3,16 +3,16 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from app.api import gallery, events, guests, photos, auth
+from app.api import gallery, events, guests, photos, auth, sessions, tables
 from app.core.database import engine, Base
 
 # Import all models so Base.metadata knows about them
-from app.models import event, guest, photo  # noqa: F401
+from app.models import event, guest, photo, session  # noqa: F401
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    """Create all database tables on startup (dev mode with SQLite)."""
+    """Create all database tables on startup."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
     yield
@@ -20,7 +20,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI(
     title="Event Photo Delivery API",
-    version="1.0.0",
+    version="2.0.0",
     description="Premium event photo delivery platform — Backend API",
     lifespan=lifespan,
 )
@@ -43,8 +43,10 @@ app.include_router(gallery.router)
 app.include_router(events.router)
 app.include_router(guests.router)
 app.include_router(photos.router)
+app.include_router(sessions.router)
+app.include_router(tables.router)
 
 
 @app.get("/health", tags=["health"])
 async def health():
-    return {"status": "ok"}
+    return {"status": "ok", "version": "2.0.0"}

@@ -4,19 +4,37 @@ const BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 // GUEST — Gallery API (uses JWT from URL)
 // ─────────────────────────────────────────
 
-export async function fetchGallery(token) {
-  const res = await fetch(`${BASE_URL}/gallery`, {
+export async function fetchGallery(token, offset = 0, limit = 20) {
+  const res = await fetch(`${BASE_URL}/gallery?offset=${offset}&limit=${limit}`, {
     headers: { Authorization: `Bearer ${token}` },
   })
   if (!res.ok) throw new Error('Failed to load gallery')
   const data = await res.json()
-
-  // Normalise to match our frontend shape
   return {
-    event: data.event ?? { name: 'Your Gallery', date: '', venue: '' },
-    photos: (data.photos ?? []).map(normalisePhoto),
-    suggested: (data.suggested ?? []).map(normalisePhoto),
+    event:      data.event ?? { name: 'Your Gallery', date: '', venue: '' },
+    photos:     (data.photos ?? []).map(normalisePhoto),
+    suggested:  (data.suggested ?? []).map(normalisePhoto),
+    pagination: data.pagination ?? {},
   }
+}
+
+export async function fetchGalleryBySession(token, sessionId, offset = 0, limit = 20) {
+  const res = await fetch(`${BASE_URL}/gallery/by-session/${sessionId}?offset=${offset}&limit=${limit}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
+  if (!res.ok) throw new Error('Failed to load session gallery')
+  const data = await res.json()
+  return {
+    session: data.session,
+    photos:  (data.photos ?? []).map(normalisePhoto),
+    pagination: data.pagination ?? {},
+  }
+}
+
+export async function getActiveEvent() {
+  const res = await fetch(`${BASE_URL}/events/active`)
+  if (!res.ok) throw new Error('No active event')
+  return res.json()
 }
 
 export async function verifyToken(token) {
@@ -30,7 +48,6 @@ export async function verifyToken(token) {
 }
 
 export async function downloadPhoto(photo) {
-  // Get a signed URL from backend, then trigger download
   try {
     const res = await fetch(`${BASE_URL}/photos/${photo.id}/download`)
     if (res.ok) {
@@ -42,12 +59,28 @@ export async function downloadPhoto(photo) {
       return
     }
   } catch (_) { /* fallback below */ }
-
-  // Fallback: direct download from CDN URL
   const a = document.createElement('a')
   a.href = photo.url_original || photo.url_preview
   a.download = photo.filename
   a.click()
+}
+
+/**
+ * Download queue: max `concurrency` downloads at once per user.
+ * Prevents browser crash when user clicks "Download All" for 100+ photos.
+ */
+export async function downloadQueue(photos, concurrency = 3) {
+  const queue = [...photos]
+  const sleep = ms => new Promise(r => setTimeout(r, ms))
+  const workers = Array(Math.min(concurrency, queue.length)).fill(null).map(async () => {
+    while (queue.length > 0) {
+      const photo = queue.shift()
+      if (!photo) break
+      await downloadPhoto(photo)
+      await sleep(400)
+    }
+  })
+  await Promise.all(workers)
 }
 
 export async function faceScan(selfieFile, token) {
@@ -73,6 +106,14 @@ function adminHeaders(adminSecret) {
   }
 }
 
+export async function listEvents(adminSecret) {
+  const res = await fetch(`${BASE_URL}/events`, {
+    headers: adminHeaders(adminSecret),
+  })
+  if (!res.ok) throw new Error('Failed to list events')
+  return res.json()
+}
+
 export async function createEvent(payload, adminSecret) {
   const res = await fetch(`${BASE_URL}/events`, {
     method: 'POST',
@@ -82,6 +123,19 @@ export async function createEvent(payload, adminSecret) {
   if (!res.ok) {
     const err = await res.json()
     throw new Error(err.detail || 'Failed to create event')
+  }
+  return res.json()
+}
+
+export async function updateEvent(eventId, payload, adminSecret) {
+  const res = await fetch(`${BASE_URL}/events/${eventId}`, {
+    method: 'PATCH',
+    headers: adminHeaders(adminSecret),
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.detail || 'Failed to update event')
   }
   return res.json()
 }
@@ -119,12 +173,13 @@ export async function listGuests(eventId, adminSecret) {
   return res.json()
 }
 
-export async function uploadPhoto(file, eventId, adminSecret, tableTag = null) {
+export async function uploadPhoto(file, eventId, adminSecret, tableTag = null, sessionId = null, tableId = null) {
   const formData = new FormData()
   formData.append('file', file)
   const headers = { 'x-admin-secret': adminSecret, 'X-Event-Id': eventId }
-  if (tableTag) headers['X-Table-Tag'] = String(tableTag)
-
+  if (tableTag)  headers['X-Table-Tag']  = String(tableTag)
+  if (tableId)   headers['X-Table-Id']   = tableId
+  if (sessionId) headers['X-Session-Id'] = sessionId
   const res = await fetch(`${BASE_URL}/photos/upload`, {
     method: 'POST',
     headers,
@@ -143,27 +198,136 @@ export async function publishPhoto(photoId, adminSecret) {
   return res.json()
 }
 
+// ── Sessions API ───────────────────────────
+
+export async function listSessions(eventId, adminSecret) {
+  const headers = adminSecret ? adminHeaders(adminSecret) : {}
+  const res = await fetch(`${BASE_URL}/events/${eventId}/sessions`, { headers })
+  if (!res.ok) throw new Error('Failed to load sessions')
+  return res.json()
+}
+
+export async function createSession(eventId, payload, adminSecret) {
+  const res = await fetch(`${BASE_URL}/events/${eventId}/sessions`, {
+    method: 'POST',
+    headers: adminHeaders(adminSecret),
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.detail || 'Failed to create session')
+  }
+  return res.json()
+}
+
+export async function updateSession(eventId, sessionId, payload, adminSecret) {
+  const res = await fetch(`${BASE_URL}/events/${eventId}/sessions/${sessionId}`, {
+    method: 'PATCH',
+    headers: adminHeaders(adminSecret),
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error('Failed to update session')
+  return res.json()
+}
+
+export async function deleteSession(eventId, sessionId, adminSecret) {
+  const res = await fetch(`${BASE_URL}/events/${eventId}/sessions/${sessionId}`, {
+    method: 'DELETE',
+    headers: adminHeaders(adminSecret),
+  })
+  if (!res.ok) throw new Error('Failed to delete session')
+}
+
+export async function reorderSessions(eventId, sessions, adminSecret) {
+  const res = await fetch(`${BASE_URL}/events/${eventId}/sessions/reorder`, {
+    method: 'PATCH',
+    headers: adminHeaders(adminSecret),
+    body: JSON.stringify({ sessions }),
+  })
+  if (!res.ok) throw new Error('Failed to reorder sessions')
+  return res.json()
+}
+
+// ─────────────────────────────────────────
+// TABLES API ────────────────────────────────
+// ─────────────────────────────────────────
+
+export async function listTables(eventId, adminSecret) {
+  const headers = adminSecret ? adminHeaders(adminSecret) : {}
+  const res = await fetch(`${BASE_URL}/events/${eventId}/tables`, { headers })
+  if (!res.ok) throw new Error('Failed to load tables')
+  return res.json()
+}
+
+export async function createTable(eventId, payload, adminSecret) {
+  const res = await fetch(`${BASE_URL}/events/${eventId}/tables`, {
+    method: 'POST',
+    headers: adminHeaders(adminSecret),
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) {
+    const err = await res.json()
+    throw new Error(err.detail || 'Failed to create table')
+  }
+  return res.json()
+}
+
+export async function updateTable(eventId, tableId, payload, adminSecret) {
+  const res = await fetch(`${BASE_URL}/events/${eventId}/tables/${tableId}`, {
+    method: 'PATCH',
+    headers: adminHeaders(adminSecret),
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error('Failed to update table')
+  return res.json()
+}
+
+export async function deleteTable(eventId, tableId, adminSecret) {
+  const res = await fetch(`${BASE_URL}/events/${eventId}/tables/${tableId}`, {
+    method: 'DELETE',
+    headers: adminHeaders(adminSecret),
+  })
+  if (!res.ok) throw new Error('Failed to delete table')
+}
+
+export async function getEventConfig(eventId) {
+  const res = await fetch(`${BASE_URL}/events/${eventId}/config`)
+  if (!res.ok) throw new Error('Failed to fetch event config')
+  return res.json()
+}
+
+export async function updateEventToggles(eventId, payload, adminSecret) {
+  const res = await fetch(`${BASE_URL}/events/${eventId}/toggles`, {
+    method: 'PATCH',
+    headers: adminHeaders(adminSecret),
+    body: JSON.stringify(payload),
+  })
+  if (!res.ok) throw new Error('Failed to update toggles')
+  return res.json()
+}
+
 // ─────────────────────────────────────────
 // MOCK fallback (used when backend is offline)
 // ─────────────────────────────────────────
 
 const MOCK_PHOTOS = Array.from({ length: 24 }, (_, i) => ({
-  id: `photo-${i}`,
+  id:          `photo-${i}`,
   thumb:       `https://picsum.photos/seed/${i + 10}/400/500`,
   url_thumb:   `https://picsum.photos/seed/${i + 10}/400/500`,
   url_preview: `https://picsum.photos/seed/${i + 10}/1200/1500`,
   url_original:`https://picsum.photos/seed/${i + 10}/3000/3750`,
   filename:    `DSC_${4800 + i}.jpg`,
-  size:        `${(Math.random() * 20 + 8).toFixed(1)} MB`,
   confidence:  i < 18 ? 0.92 : 0.71,
+  session_id:  null,
 }))
 
 export async function fetchGalleryMock(_token) {
   await new Promise(r => setTimeout(r, 1200))
   return {
-    event: { name: 'Sophia & Daniel', date: 'June 14, 2025', venue: 'Grand Sofitel, Phnom Penh' },
-    photos: MOCK_PHOTOS.slice(0, 18),
-    suggested: MOCK_PHOTOS.slice(18),
+    event:      { name: 'Sophia & Daniel', date: 'June 14, 2025', venue: 'Grand Sofitel, Phnom Penh' },
+    photos:     MOCK_PHOTOS.slice(0, 18),
+    suggested:  MOCK_PHOTOS.slice(18),
+    pagination: { offset: 0, limit: 20, has_more: false },
   }
 }
 
@@ -173,12 +337,13 @@ export async function fetchGalleryMock(_token) {
 
 function normalisePhoto(p) {
   return {
-    id:          p.id,
-    thumb:       p.url_thumb,
-    url_thumb:   p.url_thumb,
-    url_preview: p.url_preview,
-    url_original:p.url_original,
-    filename:    p.filename,
-    confidence:  p.confidence ?? 1,
+    id:           p.id,
+    thumb:        p.url_thumb,
+    url_thumb:    p.url_thumb,
+    url_preview:  p.url_preview,
+    url_original: p.url_original,
+    filename:     p.filename,
+    confidence:   p.confidence ?? 1,
+    session_id:   p.session_id ?? null,
   }
 }

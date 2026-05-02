@@ -1,24 +1,23 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { fetchGallery, fetchGalleryMock, downloadPhoto } from '../lib/api'
+import { fetchGallery, fetchGalleryMock, downloadQueue } from '../lib/api'
 import MasonryGallery from '../components/MasonryGallery'
 import SkeletonGrid from '../components/SkeletonGrid'
 import PhotoViewer from '../components/PhotoViewer'
 import { motion } from 'framer-motion'
 
 export default function GalleryPage() {
-  // Token comes from URL param /g/:token  OR  ?t=... query
   const { token: paramToken } = useParams()
   const queryToken = new URLSearchParams(window.location.search).get('t')
   const token = paramToken || queryToken || 'demo'
 
   const [viewerIndex, setViewerIndex] = useState(null)
+  const [downloading, setDownloading] = useState(false)
 
   const { data, isLoading, error } = useQuery({
     queryKey: ['gallery', token],
     queryFn: () => {
-      // Use mock if token is literally "demo" (no backend needed)
       if (token === 'demo') return fetchGalleryMock(token)
       return fetchGallery(token)
     },
@@ -26,10 +25,28 @@ export default function GalleryPage() {
   })
 
   const allPhotos = [...(data?.photos ?? []), ...(data?.suggested ?? [])]
+  
+  // Feature toggles fallback
+  const features = data?.event?.features || {
+    download: true,
+    show_suggested: true
+  }
+
+  const handleDownloadAll = async () => {
+    const photos = data?.photos ?? []
+    if (photos.length === 0 || downloading) return
+    
+    setDownloading(true)
+    try {
+      // Use the concurrency-limited queue from api.js
+      await downloadQueue(photos, 3) 
+    } finally {
+      setDownloading(false)
+    }
+  }
 
   return (
     <div className="min-h-screen bg-cream">
-
       {/* Header */}
       <motion.header
         className="sticky top-0 z-10 bg-cream/90 backdrop-blur-sm border-b border-ink/8 px-4 py-3 gold-line"
@@ -41,7 +58,7 @@ export default function GalleryPage() {
               {data?.event?.name ?? 'Your Gallery'}
             </h1>
             <p className="text-xs text-muted font-sans mt-0.5">
-              {data?.event?.date}
+              {data?.event?.date ? new Date(data.event.date).toLocaleDateString() : ''}
               {data?.event?.date && data?.photos?.length ? ' · ' : ''}
               {data?.photos?.length ? `${data.photos.length} photos matched` : isLoading ? 'Loading...' : ''}
             </p>
@@ -70,13 +87,13 @@ export default function GalleryPage() {
         />
       )}
 
-      {/* Suggested strip */}
-      {!isLoading && (data?.suggested?.length ?? 0) > 0 && (
-        <div className="px-4 pb-6">
+      {/* Suggested strip - conditionally rendered based on features */}
+      {!isLoading && features.show_suggested && (data?.suggested?.length ?? 0) > 0 && (
+        <div className="px-4 pb-6 mt-4 border-t border-ink/5 pt-4">
           <p className="text-xs uppercase tracking-widest text-muted font-sans mb-3">
             Suggested — might include you
           </p>
-          <div className="flex gap-2 overflow-x-auto pb-2">
+          <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
             {data.suggested.map((p, i) => (
               <img
                 key={p.id}
@@ -89,31 +106,24 @@ export default function GalleryPage() {
         </div>
       )}
 
-      {/* Download All FAB */}
-      {!isLoading && (data?.photos?.length ?? 0) > 0 && viewerIndex === null && (
+      {/* Download All FAB - conditionally rendered based on features */}
+      {!isLoading && features.download && (data?.photos?.length ?? 0) > 0 && viewerIndex === null && (
         <motion.button
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.5 }}
           whileTap={{ scale: 0.95 }}
-          onClick={() => {
-            const photos = data?.photos ?? []
-            photos.forEach((p, i) => {
-              setTimeout(() => {
-                const a = document.createElement('a')
-                a.href = p.url_original || p.url_preview || p.thumb
-                a.download = p.filename || `photo_${i}.jpg`
-                a.target = '_blank'
-                document.body.appendChild(a)
-                a.click()
-                document.body.removeChild(a)
-              }, i * 500)
-            })
-          }}
-          className="fixed bottom-6 right-4 z-20 bg-ink text-cream pl-4 pr-5 py-3 rounded-full
-            shadow-xl shadow-ink/30 flex items-center gap-2 text-xs font-sans font-medium"
+          onClick={handleDownloadAll}
+          disabled={downloading}
+          className={`fixed bottom-6 right-4 z-20 pl-4 pr-5 py-3 rounded-full shadow-xl flex items-center gap-2 text-xs font-sans font-medium transition-colors
+            ${downloading ? 'bg-ink/60 text-cream/80 cursor-wait' : 'bg-ink text-cream shadow-ink/30'}`}
         >
-          <span>⬇</span> Download All ({data?.photos?.length})
+          {downloading ? (
+             <div className="w-3 h-3 border-2 border-cream border-t-transparent rounded-full animate-spin" />
+          ) : (
+            <span>⬇</span>
+          )}
+          {downloading ? 'Downloading...' : `Download All (${data.photos.length})`}
         </motion.button>
       )}
 
@@ -123,6 +133,7 @@ export default function GalleryPage() {
           photos={allPhotos}
           initialIndex={viewerIndex}
           onClose={() => setViewerIndex(null)}
+          allowDownload={features.download}
         />
       )}
     </div>
