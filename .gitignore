@@ -1,0 +1,19 @@
+# Root .gitignore for Image_Store
+
+# Backend
+backend/.env
+backend/.venv/
+backend/uploads/
+backend/event_photos.db
+backend/__pycache__/
+backend/*.pyc
+
+# Frontend
+event-photo-delivery/node_modules/
+event-photo-delivery/.env
+event-photo-delivery/dist/
+event-photo-delivery/.DS_Store
+
+# General
+.DS_Store
+Thumbs.db
