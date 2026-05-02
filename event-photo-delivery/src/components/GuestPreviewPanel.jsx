@@ -1,81 +1,103 @@
 import { motion, AnimatePresence } from 'framer-motion'
+import LandingPage from '../pages/LandingPage'
+import { MemoryRouter, Routes, Route } from 'react-router-dom'
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 
-export default function GuestPreviewPanel({ features }) {
-  const showFace = features.face_scan !== false
-  const showQR = features.qr_access !== false
-  const showTable = features.table_browsing !== false
+// We create a fresh QueryClient just for the preview so it doesn't pollute the main one
+const previewQc = new QueryClient({
+  defaultOptions: { queries: { retry: false, staleTime: Infinity } }
+})
+
+export default function GuestPreviewPanel({ isOpen, onClose, eventConfig }) {
+  if (!isOpen) return null
+
+  // We pre-populate the query cache for the LandingPage to use
+  previewQc.setQueryData(['eventConfig', eventConfig.id], eventConfig)
+
+  const activeFeatures = []
+  if (eventConfig.features?.face_scan !== false) activeFeatures.push('Face Scan')
+  if (eventConfig.features?.qr_access !== false) activeFeatures.push('QR')
+  if (eventConfig.features?.table_browse !== false) activeFeatures.push('Tables')
 
   return (
-    <div className="bg-cream border border-ink/10 rounded-xl p-6 relative overflow-hidden flex flex-col items-center justify-center min-h-[400px]">
-      <div className="absolute top-0 right-0 p-3">
-        <span className="text-[10px] font-sans font-medium tracking-widest text-gold uppercase border border-gold/30 px-2 py-1 rounded-full">
-          Live Preview
-        </span>
-      </div>
-
-      <div className="w-[280px] bg-white rounded-[2rem] shadow-2xl border-[4px] border-ink/5 p-4 flex flex-col">
-        <div className="text-center mt-4 mb-6">
-          <div className="w-8 h-8 rounded-full border border-gold/40 flex items-center justify-center mx-auto mb-3 bg-cream">
-            <span className="text-gold text-xs">✦</span>
-          </div>
-          <h3 className="font-serif italic text-lg leading-tight">Sophia & Daniel's<br />Wedding</h3>
-        </div>
-
-        <div className="space-y-2 flex-1">
-          <AnimatePresence>
-            {showFace && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="bg-ink text-cream p-3 rounded-xl flex items-center gap-3"
+    <AnimatePresence>
+      {isOpen && (
+        <>
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={onClose}
+            className="fixed inset-0 bg-ink/20 backdrop-blur-sm z-40 lg:hidden"
+          />
+          <motion.div
+            initial={{ x: '100%' }}
+            animate={{ x: 0 }}
+            exit={{ x: '100%' }}
+            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
+            className="fixed top-0 right-0 bottom-0 w-full max-w-[400px] bg-white shadow-2xl z-50 flex flex-col border-l border-ink/10"
+          >
+            {/* Header */}
+            <div className="flex items-center justify-between p-4 border-b border-ink/10 shrink-0 bg-cream">
+              <div>
+                <h3 className="font-serif text-lg text-ink flex items-center gap-2">
+                  <span>👁</span> Guest Preview
+                </h3>
+                <p className="text-xs text-muted font-sans">Exactly what your guests will see</p>
+              </div>
+              <button 
+                onClick={onClose}
+                className="w-8 h-8 flex items-center justify-center rounded-full bg-ink/5 hover:bg-ink/10 text-muted transition-colors text-sm"
               >
-                <div className="w-8 h-8 bg-gold/20 rounded-lg flex items-center justify-center">👤</div>
-                <div>
-                  <p className="text-xs font-medium">Scan My Face</p>
-                  <p className="text-[10px] text-cream/60">AI finds your photos</p>
-                </div>
-              </motion.div>
-            )}
+                ✕
+              </button>
+            </div>
 
-            {showQR && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="bg-white border border-ink/10 text-ink p-3 rounded-xl flex items-center gap-3"
-              >
-                <div className="w-8 h-8 bg-ink/5 rounded-lg flex items-center justify-center">📷</div>
-                <div>
-                  <p className="text-xs font-medium">Scan QR Code</p>
-                  <p className="text-[10px] text-muted">From your invitation</p>
+            {/* Preview Area (Simulated Phone) */}
+            <div className="flex-1 bg-ink/5 p-6 overflow-y-auto flex justify-center items-start">
+              <div className="w-[320px] h-[650px] bg-white rounded-[2.5rem] shadow-xl border-[6px] border-ink/10 overflow-hidden relative shrink-0">
+                {/* Phone Notch */}
+                <div className="absolute top-0 inset-x-0 h-6 flex justify-center z-50">
+                  <div className="w-32 h-5 bg-ink/10 rounded-b-xl backdrop-blur-md" />
                 </div>
-              </motion.div>
-            )}
-
-            {showTable && (
-              <motion.div
-                initial={{ opacity: 0, height: 0 }}
-                animate={{ opacity: 1, height: 'auto' }}
-                exit={{ opacity: 0, height: 0 }}
-                className="bg-white border border-ink/10 text-ink p-3 rounded-xl flex items-center gap-3"
-              >
-                <div className="w-8 h-8 bg-ink/5 rounded-lg flex items-center justify-center">🪑</div>
-                <div>
-                  <p className="text-xs font-medium">Table Number</p>
-                  <p className="text-[10px] text-muted">Browse by seating</p>
+                
+                <div className="w-full h-full overflow-y-auto scrollbar-hide relative pointer-events-none">
+                  {/* We use MemoryRouter to render the LandingPage without affecting actual URL */}
+                  <QueryClientProvider client={previewQc}>
+                    <MemoryRouter initialEntries={[`/e/${eventConfig.id}`]}>
+                      <Routes>
+                        <Route path="/e/:eventId" element={<LandingPage isPreview={true} />} />
+                      </Routes>
+                    </MemoryRouter>
+                  </QueryClientProvider>
                 </div>
-              </motion.div>
-            )}
-          </AnimatePresence>
+              </div>
+            </div>
 
-          {!showFace && !showQR && !showTable && (
-            <p className="text-center text-[10px] text-muted italic mt-4">
-              All access methods are disabled.
-            </p>
-          )}
-        </div>
-      </div>
-    </div>
+            {/* Footer Info */}
+            <div className="p-4 border-t border-ink/10 shrink-0 bg-cream space-y-2">
+              <div className="flex justify-between text-xs">
+                <span className="text-muted">Mode:</span>
+                <span className="font-medium text-ink">
+                  {eventConfig.mode === 'multi_session' ? 'Multi-Session' : 'Simple'}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted">Features active:</span>
+                <span className="font-medium text-ink text-right">
+                  {activeFeatures.length > 0 ? activeFeatures.join(', ') : 'None'}
+                </span>
+              </div>
+              <div className="flex justify-between text-xs">
+                <span className="text-muted">Tables:</span>
+                <span className="font-medium text-ink">
+                  {eventConfig.table_count > 0 ? `${eventConfig.table_count} (${eventConfig.table_naming})` : 'Not configured'}
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        </>
+      )}
+    </AnimatePresence>
   )
 }

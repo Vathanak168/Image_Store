@@ -85,7 +85,7 @@ export default function QRScanPage() {
 
       {/* Header */}
       <div className="flex items-center justify-between px-4 pt-6 pb-4 z-10">
-        <button onClick={() => navigate('/')}
+        <button onClick={() => navigate(-1)}
           className="w-10 h-10 rounded-full bg-cream/10 border border-cream/20 text-cream flex items-center justify-center text-lg">
           ←
         </button>

@@ -1,5 +1,5 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { listTables, createTable, updateTable, deleteTable } from '../lib/api'
+import { listTables, configureTables, updateTable, uploadTablePhotos } from '../lib/api'
 
 export function useTables(eventId, adminSecret = null) {
   const queryClient = useQueryClient()
@@ -11,18 +11,9 @@ export function useTables(eventId, adminSecret = null) {
     enabled: !!eventId,
   })
 
-  const createMutation = useMutation({
-    mutationFn: (payload) => createTable(eventId, payload, adminSecret),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
-  })
-
+  // We keep update for individual table labels
   const updateMutation = useMutation({
     mutationFn: ({ tableId, payload }) => updateTable(eventId, tableId, payload, adminSecret),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey }),
-  })
-
-  const deleteMutation = useMutation({
-    mutationFn: (tableId) => deleteTable(eventId, tableId, adminSecret),
     onSuccess: () => queryClient.invalidateQueries({ queryKey }),
   })
 
@@ -30,11 +21,29 @@ export function useTables(eventId, adminSecret = null) {
     tables: tablesQuery.data || [],
     isLoading: tablesQuery.isLoading,
     error: tablesQuery.error,
-    createTable: createMutation.mutateAsync,
     updateTable: updateMutation.mutateAsync,
-    deleteTable: deleteMutation.mutateAsync,
-    isCreating: createMutation.isPending,
     isUpdating: updateMutation.isPending,
-    isDeleting: deleteMutation.isPending,
   }
+}
+
+export function useConfigureTables(eventId, adminSecret = null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (config) => configureTables(eventId, config, adminSecret),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tables', eventId] })
+      qc.invalidateQueries({ queryKey: ['eventConfig', eventId] })
+      qc.invalidateQueries({ queryKey: ['event', eventId] })
+    },
+  })
+}
+
+export function useUploadTablePhotos(eventId, tableId, adminSecret = null) {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: (files) => uploadTablePhotos(eventId, tableId, files, adminSecret),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ['tables', eventId] })
+    },
+  })
 }

@@ -10,7 +10,7 @@ import QRGenerator from '../components/QRGenerator'
 const DEFAULT_FEATURES = {
   face_scan: true,
   qr_access: true,
-  table_browsing: true,
+  table_browse: true,
   download: true,
   show_suggested: true
 }
@@ -258,7 +258,7 @@ export default function AdminPage() {
                 {[
                   { key: 'face_scan', label: '👤 AI Face Scan', sub: 'Enable selfie matching' },
                   { key: 'qr_access', label: '📷 QR Code Access', sub: 'Enable QR scanning' },
-                  { key: 'table_browsing', label: '🪑 Table Browsing', sub: 'Allow browsing by table' },
+                  { key: 'table_browse', label: '🪑 Table Browsing', sub: 'Allow browsing by table' },
                   { key: 'download', label: '⬇️ Photo Download', sub: 'Allow downloading photos' },
                   { key: 'show_suggested', label: '💡 Suggested Photos', sub: 'Show lower confidence matches' }
                 ].map(({ key, label, sub }) => (

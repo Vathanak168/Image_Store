@@ -48,26 +48,43 @@ export async function verifyToken(token) {
 }
 
 export async function downloadPhoto(photo) {
+  let targetUrl = photo.url_original || photo.url_preview || photo.thumb;
+  
   try {
     const res = await fetch(`${BASE_URL}/photos/${photo.id}/download`)
     if (res.ok) {
       const { download_url } = await res.json()
-      const a = document.createElement('a')
-      a.href = download_url
-      a.download = photo.filename
-      a.click()
-      return
+      if (download_url) targetUrl = download_url;
     }
   } catch (_) { /* fallback below */ }
-  const a = document.createElement('a')
-  a.href = photo.url_original || photo.url_preview
-  a.download = photo.filename
-  a.click()
+
+  try {
+    const res = await fetch(targetUrl);
+    if (!res.ok) throw new Error('Network response was not ok');
+    const blob = await res.blob();
+    const blobUrl = window.URL.createObjectURL(blob);
+    
+    const a = document.createElement('a');
+    a.style.display = 'none';
+    a.href = blobUrl;
+    a.download = photo.filename || 'photo.jpg';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    
+    window.URL.revokeObjectURL(blobUrl);
+  } catch (err) {
+    // Fallback if CORS prevents blob fetch
+    const a = document.createElement('a');
+    a.href = targetUrl;
+    a.download = photo.filename || 'photo.jpg';
+    a.target = '_blank';
+    a.click();
+  }
 }
 
 /**
  * Download queue: max `concurrency` downloads at once per user.
- * Prevents browser crash when user clicks "Download All" for 100+ photos.
  */
 export async function downloadQueue(photos, concurrency = 3) {
   const queue = [...photos]
@@ -198,7 +215,7 @@ export async function publishPhoto(photoId, adminSecret) {
   return res.json()
 }
 
-// ── Sessions API ───────────────────────────
+// ── Sessions API ────────────────────────────────────────────────────────────
 
 export async function listSessions(eventId, adminSecret) {
   const headers = adminSecret ? adminHeaders(adminSecret) : {}
@@ -248,9 +265,7 @@ export async function reorderSessions(eventId, sessions, adminSecret) {
   return res.json()
 }
 
-// ─────────────────────────────────────────
-// TABLES API ────────────────────────────────
-// ─────────────────────────────────────────
+// ── Tables API ──────────────────────────────────────────────────────────────
 
 export async function listTables(eventId, adminSecret) {
   const headers = adminSecret ? adminHeaders(adminSecret) : {}
@@ -259,15 +274,19 @@ export async function listTables(eventId, adminSecret) {
   return res.json()
 }
 
-export async function createTable(eventId, payload, adminSecret) {
-  const res = await fetch(`${BASE_URL}/events/${eventId}/tables`, {
+/**
+ * Bulk configure tables: delete all existing, generate new ones.
+ * payload: { table_count: number, table_naming: 'numeric'|'alphabetic'|'custom' }
+ */
+export async function configureTables(eventId, payload, adminSecret) {
+  const res = await fetch(`${BASE_URL}/events/${eventId}/tables/configure`, {
     method: 'POST',
     headers: adminHeaders(adminSecret),
     body: JSON.stringify(payload),
   })
   if (!res.ok) {
     const err = await res.json()
-    throw new Error(err.detail || 'Failed to create table')
+    throw new Error(err.detail || 'Failed to configure tables')
   }
   return res.json()
 }
@@ -276,19 +295,37 @@ export async function updateTable(eventId, tableId, payload, adminSecret) {
   const res = await fetch(`${BASE_URL}/events/${eventId}/tables/${tableId}`, {
     method: 'PATCH',
     headers: adminHeaders(adminSecret),
-    body: JSON.stringify(payload),
+    body: JSON.stringify(payload),   // expects { table_label: "..." }
   })
   if (!res.ok) throw new Error('Failed to update table')
   return res.json()
 }
 
-export async function deleteTable(eventId, tableId, adminSecret) {
-  const res = await fetch(`${BASE_URL}/events/${eventId}/tables/${tableId}`, {
-    method: 'DELETE',
-    headers: adminHeaders(adminSecret),
+/**
+ * Upload multiple photos to a specific table.
+ * files: File[] array
+ */
+export async function uploadTablePhotos(eventId, tableId, files, adminSecret) {
+  const form = new FormData()
+  files.forEach(f => form.append('files', f))
+  const res = await fetch(`${BASE_URL}/events/${eventId}/tables/${tableId}/photos`, {
+    method: 'POST',
+    headers: { 'x-admin-secret': adminSecret },  // no Content-Type — multipart
+    body: form,
   })
-  if (!res.ok) throw new Error('Failed to delete table')
+  if (!res.ok) throw new Error('Failed to upload table photos')
+  return res.json()
 }
+
+export async function getTablePhotos(eventId, tableId, { status = 'published', limit = 20, offset = 0 } = {}) {
+  const res = await fetch(
+    `${BASE_URL}/events/${eventId}/tables/${tableId}/photos?status=${status}&limit=${limit}&offset=${offset}`
+  )
+  if (!res.ok) throw new Error('Failed to load table photos')
+  return res.json()
+}
+
+// ── Event config + toggles ──────────────────────────────────────────────────
 
 export async function getEventConfig(eventId) {
   const res = await fetch(`${BASE_URL}/events/${eventId}/config`)

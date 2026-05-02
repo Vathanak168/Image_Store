@@ -6,7 +6,7 @@ from alembic import context
 
 # Import models so Alembic can detect them
 from app.core.database import Base
-from app.models import Event, Guest, Photo, PhotoGuest, AccessLog  # noqa: F401
+from app.models import Event, Guest, Photo, PhotoGuest, AccessLog, Session, EventTable  # noqa: F401
 from app.core.config import settings
 
 config = context.config

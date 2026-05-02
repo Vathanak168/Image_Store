@@ -1,31 +1,23 @@
 import { useState, useEffect, useCallback } from 'react'
 import { motion, AnimatePresence, useMotionValue, useTransform } from 'framer-motion'
 import { useSwipeable } from 'react-swipeable'
+import { downloadPhoto } from '../lib/api'
 
 export default function PhotoViewer({ photos, initialIndex, onClose }) {
   const [index, setIndex]         = useState(initialIndex)
   const [uiVisible, setUiVisible] = useState(true)
   const [dlAnim, setDlAnim]       = useState(false)
   const [dlDone, setDlDone]       = useState(false)
-  const hideTimer                  = useState(null)
   const photo = photos[index]
 
-  // Cinema mode — hide UI after 3s idle
-  const resetTimer = useCallback(() => {
-    clearTimeout(hideTimer[0])
-    setUiVisible(true)
-    hideTimer[0] = setTimeout(() => setUiVisible(false), 3000)
-  }, [])
-
-  useEffect(() => { resetTimer() }, [index])
-  useEffect(() => () => clearTimeout(hideTimer[0]), [])
+  const toggleUi = () => setUiVisible(v => !v)
 
   const prev = () => setIndex(i => Math.max(0, i - 1))
   const next = () => setIndex(i => Math.min(photos.length - 1, i + 1))
 
   const handlers = useSwipeable({
-    onSwipedLeft:  () => { next(); resetTimer() },
-    onSwipedRight: () => { prev(); resetTimer() },
+    onSwipedLeft:  () => next(),
+    onSwipedRight: () => prev(),
     onSwipedUp:    () => { setUiVisible(false) },
     onSwipedDown:  () => onClose(),
     trackTouch: true,
@@ -38,14 +30,9 @@ export default function PhotoViewer({ photos, initialIndex, onClose }) {
     if (dlAnim) return
     setDlAnim(true)
     try {
-      const a = document.createElement('a')
-      a.href = photo.url_original || photo.url_preview || photo.thumb
-      a.download = photo.filename || 'photo.jpg'
-      a.target = '_blank'
-      document.body.appendChild(a)
-      a.click()
-      document.body.removeChild(a)
-      setTimeout(() => { setDlDone(true); setTimeout(() => { setDlAnim(false); setDlDone(false) }, 1200) }, 300)
+      await downloadPhoto(photo)
+      setDlDone(true)
+      setTimeout(() => { setDlAnim(false); setDlDone(false) }, 1200)
     } catch { setDlAnim(false) }
   }
 
@@ -59,7 +46,7 @@ export default function PhotoViewer({ photos, initialIndex, onClose }) {
     <div
       className="fixed inset-0 bg-ink z-50 flex flex-col select-none"
       style={{ touchAction: 'none' }}
-      onClick={() => { resetTimer() }}
+      onClick={toggleUi}
       {...handlers}
     >
       {/* Photo */}
@@ -132,7 +119,7 @@ export default function PhotoViewer({ photos, initialIndex, onClose }) {
                   <motion.button
                     key={p.id}
                     whileTap={{ scale: 0.9 }}
-                    onClick={(e) => { e.stopPropagation(); setIndex(i); resetTimer() }}
+                    onClick={(e) => { e.stopPropagation(); setIndex(i); }}
                     className={`flex-shrink-0 w-12 h-12 rounded-lg overflow-hidden transition-all duration-200
                       ${i === index
                         ? 'ring-2 ring-gold ring-offset-1 ring-offset-ink opacity-100'
@@ -149,7 +136,7 @@ export default function PhotoViewer({ photos, initialIndex, onClose }) {
                 {/* Prev/Next */}
                 <div className="flex gap-2">
                   <button
-                    onClick={(e) => { e.stopPropagation(); prev(); resetTimer() }}
+                    onClick={(e) => { e.stopPropagation(); prev(); }}
                     disabled={index === 0}
                     className="w-10 h-10 rounded-full bg-cream/10 backdrop-blur-sm border border-cream/20
                       flex items-center justify-center text-cream disabled:opacity-30 text-lg active:scale-95 transition-transform"
@@ -157,7 +144,7 @@ export default function PhotoViewer({ photos, initialIndex, onClose }) {
                     ‹
                   </button>
                   <button
-                    onClick={(e) => { e.stopPropagation(); next(); resetTimer() }}
+                    onClick={(e) => { e.stopPropagation(); next(); }}
                     disabled={index === photos.length - 1}
                     className="w-10 h-10 rounded-full bg-cream/10 backdrop-blur-sm border border-cream/20
                       flex items-center justify-center text-cream disabled:opacity-30 text-lg active:scale-95 transition-transform"

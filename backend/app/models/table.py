@@ -12,11 +12,12 @@ class EventTable(Base):
         Index("ix_event_tables_event_id", "event_id"),
     )
 
-    id:           Mapped[uuid.UUID] = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
-    event_id:     Mapped[uuid.UUID] = mapped_column(ForeignKey("events.id"))
-    name:         Mapped[str]       = mapped_column(String(100))        # e.g., "Table 1", "VIP A"
-    table_number: Mapped[int | None] = mapped_column(Integer)           # Used for sorting numerically
-    created_at:   Mapped[datetime]  = mapped_column(default=datetime.utcnow)
+    id:           Mapped[uuid.UUID]  = mapped_column(Uuid, primary_key=True, default=uuid.uuid4)
+    event_id:     Mapped[uuid.UUID]  = mapped_column(ForeignKey("events.id"))
+    name:         Mapped[str | None] = mapped_column(String(100), nullable=True)  # table_label in API
+    table_number: Mapped[int | None] = mapped_column(Integer)
+    photo_count:  Mapped[int]        = mapped_column(Integer, default=0)
+    created_at:   Mapped[datetime]   = mapped_column(default=datetime.utcnow)
 
     event:  Mapped["Event"]       = relationship(back_populates="tables")
     photos: Mapped[list["Photo"]] = relationship(back_populates="event_table")

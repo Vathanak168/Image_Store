@@ -1,48 +1,65 @@
+import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
+import { useNavigate } from 'react-router-dom'
 
-export default function FindMyPhotosDrawer({ isOpen, onClose, title, children }) {
-  if (!isOpen) return null
+export default function FindMyPhotosDrawer({ features }) {
+  const [open, setOpen] = useState(false)
+  const navigate = useNavigate()
+
+  // Default to true if not explicitly set to false
+  const showFace = features?.face_scan !== false
+  const showQR = features?.qr_access !== false
+  const showTable = features?.table_browse === true // Specific requirement: off by default
+
+  const hasAnyFeature = showFace || showQR || showTable
+
+  if (!hasAnyFeature) return null
 
   return (
-    <AnimatePresence>
-      {isOpen && (
-        <>
+    <div className="mt-8 mb-12 w-full px-6 flex flex-col items-center">
+      <button
+        onClick={() => setOpen(o => !o)}
+        className="flex items-center gap-2 text-sm text-muted font-sans mx-auto hover:text-ink transition-colors group"
+      >
+        <span>Find my photos</span>
+        <motion.span
+          animate={{ rotate: open ? 180 : 0 }}
+          transition={{ duration: 0.3, ease: "easeInOut" }}
+          className="text-xs group-hover:text-gold"
+        >
+          ▼
+        </motion.span>
+      </button>
+
+      <AnimatePresence>
+        {open && (
           <motion.div
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            onClick={onClose}
-            className="fixed inset-0 bg-ink/40 backdrop-blur-sm z-40"
-          />
-          <motion.div
-            initial={{ y: '100%' }}
-            animate={{ y: 0 }}
-            exit={{ y: '100%' }}
-            transition={{ type: 'spring', damping: 25, stiffness: 200 }}
-            className="fixed bottom-0 left-0 right-0 z-50 bg-cream rounded-t-[2rem] shadow-2xl border-t border-ink/10 overflow-hidden"
+            initial={{ opacity: 0, height: 0, marginTop: 0 }}
+            animate={{ opacity: 1, height: 'auto', marginTop: 24 }}
+            exit={{ opacity: 0, height: 0, marginTop: 0 }}
+            transition={{ duration: 0.3, ease: "easeInOut" }}
+            className="w-full overflow-hidden flex flex-col items-center"
           >
-            <div className="flex flex-col max-h-[85vh]">
-              {/* Drawer Handle */}
-              <div className="w-full pt-4 pb-2 flex justify-center shrink-0 cursor-pointer" onClick={onClose}>
-                <div className="w-12 h-1.5 bg-ink/10 rounded-full" />
-              </div>
-
-              {/* Header */}
-              <div className="px-6 pb-4 border-b border-ink/5 shrink-0 flex items-center justify-between">
-                <h2 className="font-serif text-xl italic text-ink">{title}</h2>
-                <button onClick={onClose} className="w-8 h-8 rounded-full bg-ink/5 flex items-center justify-center text-muted hover:bg-ink/10 transition-colors">
-                  ✕
+            <div className="w-full max-w-xs flex flex-col gap-3 pb-2">
+              {showFace && (
+                <button onClick={() => navigate('/face-scan')} className="w-full py-3.5 px-6 border border-gold/30 rounded-full text-sm font-sans text-ink hover:border-gold hover:bg-gold/5 transition-all flex items-center justify-center gap-3 shadow-sm">
+                  <span className="text-lg">📸</span> Scan my face
                 </button>
-              </div>
-
-              {/* Content */}
-              <div className="p-6 overflow-y-auto overscroll-contain">
-                {children}
-              </div>
+              )}
+              {showQR && (
+                <button onClick={() => navigate('/scan-qr')} className="w-full py-3.5 px-6 border border-ink/10 rounded-full text-sm font-sans text-muted hover:border-ink/30 hover:text-ink transition-all flex items-center justify-center gap-3">
+                  <span className="text-lg">📱</span> Scan QR code
+                </button>
+              )}
+              {showTable && (
+                <button onClick={() => navigate('/table')} className="w-full py-3.5 px-6 border border-ink/10 rounded-full text-sm font-sans text-muted hover:border-ink/30 hover:text-ink transition-all flex items-center justify-center gap-3">
+                  <span className="text-lg">🪑</span> Browse by table
+                </button>
+              )}
             </div>
           </motion.div>
-        </>
-      )}
-    </AnimatePresence>
+        )}
+      </AnimatePresence>
+    </div>
   )
 }

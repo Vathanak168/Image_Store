@@ -1,96 +1,127 @@
 import { useState } from 'react'
 import { useParams, useOutletContext } from 'react-router-dom'
-import { useTables } from '../../hooks/useTables'
+import { useTables, useConfigureTables, useUploadTablePhotos } from '../../hooks/useTables'
 import TableCard from '../../components/TableCard'
 import TableConfigModal from '../../components/TableConfigModal'
-import { motion } from 'framer-motion'
 
 export default function TablesPage() {
   const { eventId } = useParams()
-  const { adminSecret } = useOutletContext() // Provided by EventWorkspaceLayout
+  const { adminSecret, event } = useOutletContext() 
   
-  const { tables, isLoading, createTable, updateTable, deleteTable, isCreating, isUpdating } = useTables(eventId, adminSecret)
+  const { tables, isLoading: isLoadingTables, updateTable } = useTables(eventId, adminSecret)
+  const { mutateAsync: configureTables, isPending: isConfiguring } = useConfigureTables(eventId, adminSecret)
+  const { mutateAsync: uploadPhotos } = useUploadTablePhotos(eventId, null, adminSecret) // We pass tableId dynamically below
   
-  const [modalState, setModalState] = useState({ isOpen: false, data: null })
+  const [modalOpen, setModalOpen] = useState(false)
+  const [uploadingTableId, setUploadingTableId] = useState(null)
 
-  const handleSave = async (payload) => {
+  const handleConfigureSave = async (payload) => {
     try {
-      if (modalState.data) {
-        await updateTable({ tableId: modalState.data.id, payload })
-      } else {
-        await createTable(payload)
-      }
-      setModalState({ isOpen: false, data: null })
+      await configureTables(payload)
+      setModalOpen(false)
     } catch (err) {
       alert(err.message)
     }
   }
 
-  const handleDelete = async (tableId) => {
-    if (!window.confirm('Are you sure you want to delete this table? Photos tagged with this table will lose their tag.')) return
+  const handleLabelEdit = async (tableId, newLabel) => {
     try {
-      await deleteTable(tableId)
+      await updateTable({ tableId, payload: { table_label: newLabel } })
     } catch (err) {
       alert(err.message)
     }
   }
 
-  if (isLoading) {
-    return <div className="p-8 text-center text-muted animate-pulse">Loading tables...</div>
+  const handleUpload = async (tableId, files) => {
+    if (!files || files.length === 0) return
+    setUploadingTableId(tableId)
+    try {
+      // The hook allows us to pass a specific tableId for this call
+      const { uploadTablePhotos } = await import('../../lib/api')
+      await uploadTablePhotos(eventId, tableId, files, adminSecret)
+      
+      // Invalidate to refresh photos
+      const { useQueryClient } = await import('@tanstack/react-query')
+      // Note: we can't call hooks in callbacks, but we can rely on the fact
+      // that the user will refresh or the hook handles invalidation.
+      // Actually we will just reload the window for simplicity, or we can use the hook directly:
+    } catch (err) {
+      alert(err.message)
+    } finally {
+      setUploadingTableId(null)
+      window.location.reload() // Quick refresh to see new counts/thumbs
+    }
+  }
+
+  if (isLoadingTables) {
+    return <div className="p-8 text-center text-muted animate-pulse font-sans">Loading tables...</div>
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6 lg:p-8">
-      <div className="flex items-center justify-between mb-8">
+    <div className="max-w-5xl mx-auto p-6 lg:p-8">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-8">
         <div>
           <h1 className="font-serif text-3xl font-light text-ink mb-2">Tables & Seating</h1>
-          <p className="text-muted text-sm max-w-lg leading-relaxed">
-            Manage physical tables for this event. When "Table Browsing" is enabled, guests can browse photos tagged to their seating table.
+          <p className="text-muted text-sm max-w-xl leading-relaxed">
+            Configure how guests browse photos by table. Guests will select their table number on the landing page to instantly see photos of their seating group.
           </p>
         </div>
-        <button
-          onClick={() => setModalState({ isOpen: true, data: null })}
-          className="bg-ink text-cream px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-ink/80 transition-colors shrink-0 shadow-sm"
-        >
-          + Add Table
-        </button>
+        
+        {tables.length > 0 && (
+          <div className="flex items-center gap-3 shrink-0">
+            <button
+              onClick={() => setModalOpen(true)}
+              className="px-4 py-2 bg-white border border-ink/20 text-ink rounded-lg text-sm font-medium hover:bg-ink/5 transition-colors"
+            >
+              Reconfigure
+            </button>
+          </div>
+        )}
       </div>
 
       {tables.length === 0 ? (
-        <div className="bg-white border border-ink/10 border-dashed rounded-2xl p-12 text-center">
+        <div className="bg-white border border-ink/10 border-dashed rounded-2xl p-12 text-center max-w-2xl mx-auto mt-12">
           <div className="w-16 h-16 bg-cream rounded-full border border-gold/30 flex items-center justify-center text-2xl mx-auto mb-4">
             🪑
           </div>
-          <h3 className="font-serif text-xl text-ink mb-2">No tables yet</h3>
-          <p className="text-muted text-sm max-w-sm mx-auto mb-6">
-            Create tables to organize photos by seating arrangements. Guests can easily find their photos by selecting their table.
+          <h3 className="font-serif text-xl text-ink mb-2">No tables configured</h3>
+          <p className="text-muted text-sm mx-auto mb-6">
+            Generate your tables first. You can use numeric (Table 1), alphabetic (Table A), or custom names.
           </p>
           <button
-            onClick={() => setModalState({ isOpen: true, data: null })}
-            className="text-ink text-sm font-medium hover:text-gold transition-colors underline underline-offset-4"
+            onClick={() => setModalOpen(true)}
+            className="bg-ink text-cream px-6 py-2.5 rounded-lg text-sm font-medium hover:bg-ink/90 transition-colors inline-block"
           >
-            Create your first table
+            Configure Tables
           </button>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5">
           {tables.map(table => (
-            <TableCard
-              key={table.id}
-              table={table}
-              onEdit={() => setModalState({ isOpen: true, data: table })}
-              onDelete={handleDelete}
-            />
+            <div key={table.id} className="relative">
+              <TableCard
+                table={table}
+                onLabelEdit={handleLabelEdit}
+                onUpload={handleUpload}
+              />
+              {uploadingTableId === table.id && (
+                <div className="absolute inset-0 bg-white/80 backdrop-blur-[1px] flex items-center justify-center rounded-xl z-10">
+                  <div className="text-xs font-medium text-ink bg-white px-3 py-1.5 rounded-full shadow-sm border border-ink/10 flex items-center gap-2">
+                    <div className="w-3 h-3 border-2 border-ink border-t-transparent rounded-full animate-spin" />
+                    Uploading...
+                  </div>
+                </div>
+              )}
+            </div>
           ))}
         </div>
       )}
 
       <TableConfigModal
-        isOpen={modalState.isOpen}
-        onClose={() => setModalState({ isOpen: false, data: null })}
-        onSave={handleSave}
-        initialData={modalState.data}
-        isSaving={isCreating || isUpdating}
+        isOpen={modalOpen}
+        onClose={() => setModalOpen(false)}
+        onSave={handleConfigureSave}
+        isSaving={isConfiguring}
       />
     </div>
   )

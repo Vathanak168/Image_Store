@@ -1,24 +1,25 @@
 import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { fetchGallery, fetchGalleryMock, downloadQueue } from '../lib/api'
+import { fetchGallery, fetchGalleryBySession, fetchGalleryMock, downloadQueue } from '../lib/api'
 import MasonryGallery from '../components/MasonryGallery'
 import SkeletonGrid from '../components/SkeletonGrid'
 import PhotoViewer from '../components/PhotoViewer'
 import { motion } from 'framer-motion'
 
 export default function GalleryPage() {
-  const { token: paramToken } = useParams()
+  const { eventId, sessionId, token: paramToken } = useParams()
   const queryToken = new URLSearchParams(window.location.search).get('t')
-  const token = paramToken || queryToken || 'demo'
+  const token = paramToken || queryToken || eventId || 'demo'
 
   const [viewerIndex, setViewerIndex] = useState(null)
   const [downloading, setDownloading] = useState(false)
 
   const { data, isLoading, error } = useQuery({
-    queryKey: ['gallery', token],
+    queryKey: ['gallery', token, sessionId],
     queryFn: () => {
       if (token === 'demo') return fetchGalleryMock(token)
+      if (sessionId) return fetchGalleryBySession(token, sessionId)
       return fetchGallery(token)
     },
     retry: 1,
@@ -53,15 +54,23 @@ export default function GalleryPage() {
         initial={{ opacity: 0, y: -8 }}
         animate={{ opacity: 1, y: 0 }}>
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="font-serif text-2xl font-light italic text-ink">
-              {data?.event?.name ?? 'Your Gallery'}
-            </h1>
-            <p className="text-xs text-muted font-sans mt-0.5">
-              {data?.event?.date ? new Date(data.event.date).toLocaleDateString() : ''}
-              {data?.event?.date && data?.photos?.length ? ' · ' : ''}
-              {data?.photos?.length ? `${data.photos.length} photos matched` : isLoading ? 'Loading...' : ''}
-            </p>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => window.history.length > 1 ? window.history.back() : window.location.href = '/'}
+              className="w-8 h-8 rounded-full flex items-center justify-center text-ink hover:bg-ink/5 transition-colors"
+            >
+              ←
+            </button>
+            <div>
+              <h1 className="font-serif text-2xl font-light italic text-ink leading-tight">
+                {data?.event?.name ?? 'Your Gallery'}
+              </h1>
+              <p className="text-xs text-muted font-sans mt-0.5">
+                {data?.event?.date ? new Date(data.event.date).toLocaleDateString() : ''}
+                {data?.event?.date && data?.photos?.length ? ' · ' : ''}
+                {data?.photos?.length ? `${data.photos.length} photos matched` : isLoading ? 'Loading...' : ''}
+              </p>
+            </div>
           </div>
           <span className="text-xs bg-gold/10 text-gold border border-gold/30 px-3 py-1 rounded-full font-sans font-medium">
             {data?.photos?.length ?? 0} photos
